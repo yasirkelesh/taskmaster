@@ -1,1 +1,1 @@
-geliştirme aşmasındadır
+## Geliştirme aşamasındadır
