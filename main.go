@@ -14,7 +14,7 @@ func main() {
 	// Yapılandırmayı yükle
 	cfg, err := config.LoadConfig("config/config.yaml")
 	if err != nil {
-		fmt.Printf("Yapılandırma yüklenemedi: %v\n", err)
+		fmt.Printf("Configuration failed to load: %v\n", err)
 		os.Exit(1)
 	}
 

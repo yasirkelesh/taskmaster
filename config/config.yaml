@@ -1,10 +1,10 @@
 programs:
   nginx:
-    command: "/usr/local/bin/nginx -c /etc/nginx/test.conf"
-    numprocs: 1
+    command: "echo 'Nginx running' && sleep 10"
+    numprocs: 2
     autostart: true
     autorestart: unexpected
-    exitcodes: [0, 2]
+    exitcodes: [0]
     startsecs: 5
     startretries: 3
     stopsignal: TERM

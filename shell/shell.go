@@ -17,7 +17,18 @@ func Run(manager *process.Manager) {
 
 		switch input {
 		case "status":
-			fmt.Println("TODO: Durumları göster")
+			status := manager.GetStatus()
+			if len(status) == 0 {
+				fmt.Println("Hiçbir süreç tanımlı değil.")
+			} else {
+				fmt.Println("Program\t\tStatus")
+				fmt.Println("---------------------")
+				for name, states := range status {
+					for i, state := range states {
+						fmt.Printf("%s[%d]\t\t%s\n", name, i, state)
+					}
+				}
+			}
 		case "start":
 			fmt.Println("TODO: Süreci başlat")
 		case "stop":
