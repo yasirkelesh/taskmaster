@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,36 +11,34 @@ import (
 )
 
 func main() {
-	// 1. Yapılandırma dosyasını yükle
-	cfg, err := config.Load("config.yaml")
+	// Yapılandırmayı yükle
+	cfg, err := config.LoadConfig("config/config.yaml")
 	if err != nil {
-		log.Fatalf("Yapılandırma dosyası yüklenemedi: %v", err)
+		fmt.Printf("Yapılandırma yüklenemedi: %v\n", err)
+		os.Exit(1)
 	}
 
-	// 2. Süreç yöneticisini başlat
-	pm := process.NewProcessManager(cfg)
+	// Süreç yöneticisini başlat
+	manager := process.NewManager(cfg)
+	manager.Start()
 
-	// 3. Kontrol kabuğunu başlat
+	// SIGHUP sinyalini dinle (yapılandırma yenileme)
 	go func() {
-		shell.Start(pm)
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGHUP)
+		for range sigChan {
+			fmt.Println("SIGHUP alındı, yapılandırma yenileniyor...")
+			newCfg, err := config.LoadConfig("config/config.yaml")
+			if err == nil {
+				manager.UpdateConfig(newCfg)
+			}
+		}
 	}()
 
-	// 4. Sinyalleri yakala (ör. SIGHUP, SIGINT)
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
+	// Kontrol kabuğunu başlat
+	shell.Run(manager)
 
-	for sig := range sigs {
-		switch sig {
-		case syscall.SIGHUP:
-			log.Println("Yapılandırma dosyası yeniden yükleniyor...")
-			cfg, err := config.Load("config.yaml")
-			if err == nil {
-				pm.Reload(cfg)
-			}
-		case syscall.SIGINT, syscall.SIGTERM:
-			log.Println("Program durduruluyor...")
-			pm.StopAll()
-			os.Exit(0)
-		}
-	}
+	// Programın kapanmasını bekle
+	manager.Stop()
+	fmt.Println("Taskmaster kapatıldı.")
 }
