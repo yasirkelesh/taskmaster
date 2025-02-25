@@ -3,7 +3,7 @@ programs:
     command: "echo 'Nginx running' && sleep 10"
     numprocs: 2
     autostart: false # Manuel başlatacağız
-    autorestart: never
+    autorestart: always
     exitcodes: [0]
     startsecs: 5
     startretries: 3
@@ -16,10 +16,10 @@ programs:
     workingdir: "/tmp"
     umask: 022
   test:
-    command: "echo 'Test running' && sleep 20"
+    command: "echo 'Merhaba dunya' && sleep 20"
     numprocs: 1
     autostart: false
-    autorestart: never
+    autorestart: always
     exitcodes: [0]
     startsecs: 5
     startretries: 3

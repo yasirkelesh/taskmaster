@@ -23,8 +23,8 @@ func main() {
 	manager.Start()
 
 	// SIGHUP sinyalini dinle (yapılandırma yenileme)
+	sigChan := make(chan os.Signal, 1)
 	go func() {
-		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGHUP)
 		for range sigChan {
 			fmt.Println("SIGHUP alındı, yapılandırma yenileniyor...")
@@ -36,7 +36,7 @@ func main() {
 	}()
 
 	// Kontrol kabuğunu başlat
-	shell.Run(manager)
+	shell.Run(manager, sigChan)
 
 	// Programın kapanmasını bekle
 	manager.Stop()

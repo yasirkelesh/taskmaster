@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"taskmaster/process"
 )
 
-func Run(manager *process.Manager) {
+func Run(manager *process.Manager, sigChan chan os.Signal) {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("taskmaster> ")
@@ -63,7 +64,8 @@ func Run(manager *process.Manager) {
 				fmt.Printf("'%s' yeniden başlatıldı.\n", programName)
 			}
 		case "reload":
-			fmt.Println("TODO: Yapılandırmayı yenile")
+			sigChan <- syscall.SIGHUP
+			fmt.Println("sigChan tetiklendi.")
 		case "exit":
 			return
 		default:
