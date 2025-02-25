@@ -25,6 +25,20 @@ func NewManager(cfg config.Config) *Manager {
 	}
 }
 
+func (m *Manager) RestartProgram(name string) {
+	m.StopProgram(name)
+	prog, exists := m.config.Programs[name]
+	if !exists {
+		fmt.Printf("'%s' adında bir program yok\n", name)
+		return
+	}
+
+	for i := 0; i < prog.NumProcs; i++ {
+		p := m.startProcess(name, prog)
+		m.processes[name] = append(m.processes[name], p)
+	}
+}
+
 func (m *Manager) Start() {
 	for name, prog := range m.config.Programs {
 		if prog.AutoStart {
@@ -60,7 +74,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 					exitCode = status.ExitStatus()
-				}
+				 }
 			}
 		}
 
