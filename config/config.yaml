@@ -2,8 +2,8 @@ programs:
   nginx:
     command: "echo 'Nginx running' && sleep 10"
     numprocs: 2
-    autostart: true
-    autorestart: unexpected
+    autostart: false # Manuel başlatacağız
+    autorestart: never
     exitcodes: [0]
     startsecs: 5
     startretries: 3
@@ -15,3 +15,13 @@ programs:
       STARTED_BY: "taskmaster"
     workingdir: "/tmp"
     umask: 022
+  test:
+    command: "echo 'Test running' && sleep 5"
+    numprocs: 1
+    autostart: false
+    autorestart: never
+    exitcodes: [0]
+    startsecs: 5
+    startretries: 3
+    stopsignal: TERM
+    stoptime: 10

@@ -14,8 +14,13 @@ func Run(manager *process.Manager) {
 		fmt.Print("taskmaster> ")
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
-
-		switch input {
+		// Komutları parçalara ayır
+		parts := strings.Fields(input)
+		command := ""
+		if len(parts) > 0 {
+			command = parts[0]
+		}
+		switch command {
 		case "status":
 			status := manager.GetStatus()
 			if len(status) == 0 {
@@ -30,7 +35,17 @@ func Run(manager *process.Manager) {
 				}
 			}
 		case "start":
-			fmt.Println("TODO: Süreci başlat")
+			if len(parts) < 2 {
+				fmt.Println("Kullanım: start <program_adı>")
+			} else {
+				programName := parts[1]
+				err := manager.StartProgram(programName)
+				if err != nil {
+					fmt.Printf("Hata: %v\n", err)
+				} else {
+					fmt.Printf("'%s' başlatıldı.\n", programName)
+				}
+			}
 		case "stop":
 			fmt.Println("TODO: Süreci durdur")
 		case "restart":
