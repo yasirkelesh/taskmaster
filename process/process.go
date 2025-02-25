@@ -50,6 +50,26 @@ func (m *Manager) Start() {
 	}
 }
 
+// Yeni ek: Belirli bir programı başlat
+func (m *Manager) StartProgram(name string) error {
+	prog, exists := m.config.Programs[name]
+	if !exists {
+		return fmt.Errorf("program '%s' yapılandırmada tanımlı değil", name)
+	}
+	// Zaten çalışan süreç sayısını kontrol et
+	currentProcs := len(m.processes[name])
+	if currentProcs >= prog.NumProcs {
+		return fmt.Errorf("'%s' zaten maksimum süreç sayısında çalışıyor", name)
+	}
+
+	// Eksik süreçleri başlat
+	for i := currentProcs; i < prog.NumProcs; i++ {
+		p := m.startProcess(name, prog)
+		m.processes[name] = append(m.processes[name], p)
+	}
+	return nil
+}
+
 func (m *Manager) startProcess(name string, prog config.Program) *Process {
 	p := &Process{
 		cmd:    exec.Command("sh", "-c", prog.Command),
@@ -74,7 +94,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 					exitCode = status.ExitStatus()
-				 }
+				}
 			}
 		}
 
@@ -114,6 +134,7 @@ func (m *Manager) StopProgram(name string) {
 		if p.state == "running" {
 			p.cmd.Process.Kill()
 			p.state = "stopped"
+			m.processes[name] = nil
 		}
 	}
 }
@@ -128,6 +149,7 @@ func (m *Manager) Stop() {
 		}
 	}
 }
+
 
 func (m *Manager) UpdateConfig(newCfg config.Config) {
 	m.config = newCfg
@@ -144,23 +166,4 @@ func (m *Manager) GetStatus() map[string][]string {
 	return status
 }
 
-// Yeni ek: Belirli bir programı başlat
-func (m *Manager) StartProgram(name string) error {
-	prog, exists := m.config.Programs[name]
-	if !exists {
-		return fmt.Errorf("program '%s' yapılandırmada tanımlı değil", name)
-	}
 
-	// Zaten çalışan süreç sayısını kontrol et
-	currentProcs := len(m.processes[name])
-	if currentProcs >= prog.NumProcs {
-		return fmt.Errorf("'%s' zaten maksimum süreç sayısında çalışıyor", name)
-	}
-
-	// Eksik süreçleri başlat
-	for i := currentProcs; i < prog.NumProcs; i++ {
-		p := m.startProcess(name, prog)
-		m.processes[name] = append(m.processes[name], p)
-	}
-	return nil
-}
