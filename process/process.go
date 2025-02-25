@@ -89,6 +89,21 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 	return p
 }
 
+func (m *Manager) StopProgram(name string) {
+	procs, exists := m.processes[name]
+	if !exists {
+		fmt.Printf("'%s' adında bir program yok\n", name)
+		return
+	}
+
+	for _, p := range procs {
+		if p.state == "running" {
+			p.cmd.Process.Kill()
+			p.state = "stopped"
+		}
+	}
+}
+
 func (m *Manager) Stop() {
 	for _, procs := range m.processes {
 		for _, p := range procs {

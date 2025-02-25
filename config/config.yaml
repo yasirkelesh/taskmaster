@@ -16,7 +16,7 @@ programs:
     workingdir: "/tmp"
     umask: 022
   test:
-    command: "echo 'Test running' && sleep 5"
+    command: "echo 'Test running' && sleep 20"
     numprocs: 1
     autostart: false
     autorestart: never

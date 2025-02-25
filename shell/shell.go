@@ -47,7 +47,13 @@ func Run(manager *process.Manager) {
 				}
 			}
 		case "stop":
-			fmt.Println("TODO: Süreci durdur")
+			if len(parts) < 2 {
+				fmt.Println("Kullanım: stop <program_adı>")
+			} else {
+				programName := parts[1]
+				manager.StopProgram(programName)
+				fmt.Printf("'%s' durduruldu.\n", programName)
+			}
 		case "restart":
 			fmt.Println("TODO: Süreci yeniden başlat")
 		case "reload":
