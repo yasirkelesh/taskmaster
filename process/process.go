@@ -13,9 +13,10 @@ type Manager struct {
 }
 
 type Process struct {
-	cmd    *exec.Cmd
-	config config.Program
-	state  string // "running", "stopped", "failed"
+	cmd       *exec.Cmd
+	config    config.Program
+	state     string // "running", "stopped", "failed"
+	cancelCh  chan struct{}
 }
 
 func NewManager(cfg config.Config) *Manager {
@@ -85,41 +86,65 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 	p.state = "running"
 
 	// Sürecin durumunu izle ve autorestart uygula
-	go func(p *Process) {
-		err := p.cmd.Wait()
-		p.state = "stopped"
+	p.cancelCh = make(chan struct{})
+	go func(p *Process, cancelCh chan struct{}) {
+		// İki kanalı birden dinle: cmd.Wait()'in tamamlanması ve iptal sinyali
+		waitCh := make(chan error, 1)
+		go func() {
+			waitCh <- p.cmd.Wait()
+		}()
 
-		var exitCode int
-		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-					exitCode = status.ExitStatus()
+		select {
+		case <-cancelCh:
+			// İzleme iptal edildi, reload nedeniyle
+			fmt.Printf("%s için izleme goroutine'i konfigürasyon değişikliği nedeniyle sonlandırılıyor\n", name)
+			return
+		case err := <-waitCh:
+			// Süreç sonlandı, normal işlemlere devam et
+			p.state = "stopped"
+			
+			var exitCode int
+			if err != nil {
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+						exitCode = status.ExitStatus()
+					}
 				}
 			}
-		}
 
-		switch p.config.AutoRestart {
-		case "always":
-			fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
-			m.startProcess(name, p.config)
-		case "never":
-			fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
-		case "unexpected":
-			isExpected := false
-			for _, code := range p.config.ExitCodes {
-				if code == exitCode {
-					isExpected = true
-					break
-				}
-			}
-			if !isExpected {
-				fmt.Printf("%s beklenmedik çıkış (%d), yeniden başlatılıyor\n", name, exitCode)
+			switch p.config.AutoRestart {
+			case "always":
+				fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
 				m.startProcess(name, p.config)
-			} else {
-				fmt.Printf("%s beklenen çıkış (%d), yeniden başlatılmadı\n", name, exitCode)
+			case "never":
+				fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
+				if p.state == "running" {
+					p.cmd.Process.Kill()
+					p.state = "stopped"
+					m.processes[name] = nil
+				}
+			case "unexpected":
+				isExpected := false
+				for _, code := range p.config.ExitCodes {
+					if code == exitCode {
+						isExpected = true
+						break
+					}
+				}
+				if !isExpected {
+					fmt.Printf("%s beklenmedik çıkış (%d), yeniden başlatılıyor\n", name, exitCode)
+					m.startProcess(name, p.config)
+				} else {
+					fmt.Printf("%s beklenen çıkış (%d), yeniden başlatılmadı\n", name, exitCode)
+					if p.state == "running" {
+					p.cmd.Process.Kill()
+					p.state = "stopped"
+					m.processes[name] = nil
+				}
+				}
 			}
 		}
-	}(p)
+	}(p, p.cancelCh)
 	return p
 }
 
