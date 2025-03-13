@@ -26,6 +26,7 @@ Bu proje, Go dili ile yazılmıştır ve bir sanal makine üzerinde çalışacak
 - YAML kütüphanesi: `gopkg.in/yaml.v2`
 - Sanal makine (örneğin VirtualBox veya Vagrant ile Ubuntu)
 
+
 ### Adımlar
 1. **Depoyu Klonla**
    ```bash

@@ -12,6 +12,17 @@ type Manager struct {
 	processes map[string][]*Process
 }
 
+// removeProcess removes a specific process from the slice of processes for a given program name
+func (m *Manager) removeProcess(name string, proc *Process) {
+	procs := m.processes[name]
+	for i, p := range procs {
+		if p == proc {
+			m.processes[name] = append(procs[:i], procs[i+1:]...)
+			break
+		}
+	}
+}
+
 type Process struct {
 	cmd       *exec.Cmd
 	config    config.Program
@@ -54,7 +65,7 @@ func (m *Manager) Start() {
 // Yeni ek: Belirli bir programı başlat
 func (m *Manager) StartProgram(name string) error {
 	prog, exists := m.config.Programs[name]
-	if !exists {
+	if (!exists) {
 		return fmt.Errorf("program '%s' yapılandırmada tanımlı değil", name)
 	}
 	// Zaten çalışan süreç sayısını kontrol et
@@ -115,14 +126,14 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 			switch p.config.AutoRestart {
 			case "always":
 				fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
-				m.startProcess(name, p.config)
+				m.removeProcess(name, p) // Eski süreci temizle
+				m.StartProgram(name)			
 			case "never":
 				fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
-				if p.state == "running" {
-					p.cmd.Process.Kill()
-					p.state = "stopped"
-					m.processes[name] = nil
+				if p.cmd.Process != nil {
+					_ = p.cmd.Process.Kill() // Hata görmezden gelindi ama iyi bir pratikte işlenmelidir
 				}
+				m.removeProcess(name, p)
 			case "unexpected":
 				isExpected := false
 				for _, code := range p.config.ExitCodes {
@@ -133,18 +144,19 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 				}
 				if !isExpected {
 					fmt.Printf("%s beklenmedik çıkış (%d), yeniden başlatılıyor\n", name, exitCode)
+					m.removeProcess(name, p) // Eski süreci temizle
 					m.startProcess(name, p.config)
 				} else {
 					fmt.Printf("%s beklenen çıkış (%d), yeniden başlatılmadı\n", name, exitCode)
-					if p.state == "running" {
-					p.cmd.Process.Kill()
-					p.state = "stopped"
-					m.processes[name] = nil
-				}
+					if p.cmd.Process != nil {
+						_ = p.cmd.Process.Kill()
+					}
+					m.removeProcess(name, p)
 				}
 			}
 		}
 	}(p, p.cancelCh)
+	
 	return p
 }
 
