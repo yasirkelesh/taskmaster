@@ -21,6 +21,7 @@ func main() {
 	// Süreç yöneticisini başlat
 	manager := process.NewManager(cfg)
 	manager.Start()
+	
 
 	// SIGHUP sinyalini dinle (yapılandırma yenileme)
 	sigChan := make(chan os.Signal, 1)

@@ -3,7 +3,7 @@ programs:
     command: "echo 'Nginx running' && sleep 10"
     numprocs: 2
     autostart: false # Manuel başlatacağız
-    autorestart: never
+    autorestart: always
     exitcodes: [0]
     startsecs: 5
     startretries: 3
