@@ -38,17 +38,54 @@ func NewManager(cfg config.Config) *Manager {
 }
 
 func (m *Manager) RestartProgram(name string) {
-	m.StopProgram(name)
-	prog, exists := m.config.Programs[name]
-	if !exists {
-		fmt.Printf("'%s' adında bir program yok\n", name)
-		return
-	}
+    // Önce yapılandırmayı kontrol et
+    prog, exists := m.config.Programs[name]
+    if !exists {
+        fmt.Printf("'%s' adında bir program yok\n", name)
+        return
+    }
 
-	for i := 0; i < prog.NumProcs; i++ {
-		p := m.startProcess(name, prog)
-		m.processes[name] = append(m.processes[name], p)
-	}
+    // Mevcut süreçlerin bir kopyasını al
+    var procs []*Process
+    if existingProcs, ok := m.processes[name]; ok {
+        procs = make([]*Process, len(existingProcs))
+        copy(procs, existingProcs)
+    }
+
+    // Restart bayrağı ile özel bir stop işlemi yapalım
+    // Bu sayede auto-restart tetiklenmeyecek
+    for _, p := range procs {
+        if p != nil && p.state == "running" {
+            // Sürecin auto-restart işleminin atlamasını sağlayalım
+            if p.cancelCh != nil {
+                close(p.cancelCh)  // Mevcut izleme goroutine'ini kapat
+                p.cancelCh = nil   // Kapatıldığını işaretle
+            }
+            
+            // Süreci öldür
+            if p.cmd != nil && p.cmd.Process != nil {
+                err := p.cmd.Process.Kill()
+                if err != nil {
+                    fmt.Printf("Süreç durdurulurken hata: %v\n", err)
+                }
+            }
+            
+            // Süreci süreç listesinden kaldır
+            m.removeProcess(name, p)
+        }
+    }
+    
+    // Tüm süreçleri temizle
+    m.processes[name] = nil
+    
+    // Şimdi yeni süreçleri başlat
+    m.processes[name] = make([]*Process, 0, prog.NumProcs)
+    for i := 0; i < prog.NumProcs; i++ {
+        p := m.startProcess(name, prog)
+        m.processes[name] = append(m.processes[name], p)
+    }
+    
+    fmt.Printf("'%s' programı yeniden başlatıldı\n", name)
 }
 
 func (m *Manager) Start() {
