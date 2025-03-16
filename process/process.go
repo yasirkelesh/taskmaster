@@ -4,12 +4,22 @@ import (
 	"fmt"
 	"os/exec"
 	"syscall"
+	"sync/atomic"
 	"taskmaster/config"
 )
+
+type Process struct {
+	id 	  	  int64
+	cmd       *exec.Cmd
+	config    config.Program
+	state     string // "running", "stopped", "failed"
+	cancelCh  chan struct{}
+}
 
 type Manager struct {
 	config    config.Config
 	processes map[string][]*Process
+	processIDCounter int64
 }
 
 // removeProcess removes a specific process from the slice of processes for a given program name
@@ -18,17 +28,13 @@ func (m *Manager) removeProcess(name string, proc *Process) {
 	for i, p := range procs {
 		if p == proc {
 			m.processes[name] = append(procs[:i], procs[i+1:]...)
+			p.cmd.Process.Kill()
 			break
 		}
 	}
 }
 
-type Process struct {
-	cmd       *exec.Cmd
-	config    config.Program
-	state     string // "running", "stopped", "failed"
-	cancelCh  chan struct{}
-}
+
 
 func NewManager(cfg config.Config) *Manager {
 	return &Manager{
@@ -120,21 +126,27 @@ func (m *Manager) StartProgram(name string) error {
 }
 
 func (m *Manager) startProcess(name string, prog config.Program) *Process {
+	newID := atomic.AddInt64(&m.processIDCounter, 1)
+	
+	
 	p := &Process{
+		id:      newID,
 		cmd:    exec.Command("sh", "-c", prog.Command),
 		config: prog,
 		state:  "stopped",
+		cancelCh: make(chan struct{}),
 	}
 	err := p.cmd.Start()
 	if err != nil {
-		fmt.Printf("Süreç başlatılamadı (%s): %v\n", name, err)
+		fmt.Printf("Süreç başlatılamadı (%s ID:%d): %v\n", name, p.id, err)
 		p.state = "failed"
 		return p
 	}
 	p.state = "running"
 
+	fmt.Printf("Süreç başlatıldı: %s [ID:%d] (PID:%d)\n", name, p.id, p.cmd.Process.Pid)
+
 	// Sürecin durumunu izle ve autorestart uygula
-	p.cancelCh = make(chan struct{})
 	go func(p *Process, cancelCh chan struct{}) {
 		// İki kanalı birden dinle: cmd.Wait()'in tamamlanması ve iptal sinyali
 		waitCh := make(chan error, 1)
@@ -162,7 +174,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 
 			switch p.config.AutoRestart {
 			case "always":
-				fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
+				fmt.Printf("%s yeniden başlatılıyor (always politikası) pid %d\n", name, p.cmd.Process.Pid)
 				m.removeProcess(name, p) // Eski süreci temizle
 				m.StartProgram(name)			
 			case "never":
@@ -238,6 +250,48 @@ func (m *Manager) GetStatus() map[string][]string {
 		}
 	}
 	return status
+}
+
+func (m *Manager) StatusProgram(name string) {
+    procs, exists := m.processes[name]
+    if (!exists || len(procs) == 0) {
+        fmt.Printf("%s: Çalışan süreç yok\n", name)
+        return
+    }
+    
+    for i, p := range procs {
+        if p == nil {
+            continue
+        }
+        var pid int
+        if p.cmd != nil && p.cmd.Process != nil {
+            pid = p.cmd.Process.Pid
+        }
+        fmt.Printf("%s[%d] (ID:%d, PID:%d): %s\n", name, i, p.id, pid, p.state)
+    }
+}
+
+func (m *Manager) Status() {
+    fmt.Println("Program         Status             PID       ID")
+    fmt.Println("--------------------------------------------")
+    
+    for name, procs := range m.processes {
+        if len(procs) == 0 {
+            fmt.Printf("%-15s No processes\n", name)
+            continue
+        }
+        
+        for i, p := range procs {
+            if p == nil {
+                continue
+            }
+            var pid int
+            if p.cmd != nil && p.cmd.Process != nil {
+                pid = p.cmd.Process.Pid
+            }
+            fmt.Printf("%-15s[%d] %-10s     %-8d %-8d\n", name, i, p.state, pid, p.id)
+        }
+    }
 }
 
 
