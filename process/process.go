@@ -41,7 +41,20 @@ func (m *Manager) removeProcess(name string, proc *Process) {
 	for i, p := range procs {
 		if p == proc {
 			m.processes[name] = append(procs[:i], procs[i+1:]...)
-			p.cmd.Process.Kill()
+			//p.cmd.Process.Kill()
+			break
+		}
+	}
+}
+
+func (m *Manager) removeProcessMap(name string, proc *Process) {
+	
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	procs := m.processes[name]
+	for i, p := range procs {
+		if p == proc {
+			m.processes[name] = append(procs[:i], procs[i+1:]...)
 			break
 		}
 	}
@@ -163,106 +176,66 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 	fmt.Printf("Süreç başlatıldı: %s [ID:%d] (PID:%d)\n", name, p.id, p.cmd.Process.Pid)
 
 	// Sürecin durumunu izle ve autorestart uygula
-	go func(p *Process, cancelCh chan struct{}) {
-		// İki kanalı birden dinle: cmd.Wait()'in tamamlanması ve iptal sinyali
-		waitCh := make(chan error, 1)
-		go func() {
-			waitCh <- p.cmd.Wait()
-		}()
-
-		select {
-		case <-cancelCh:
-			// İzleme iptal edildi, reload nedeniyle
-			fmt.Printf("%s için izleme goroutine'i konfigürasyon değişikliği nedeniyle sonlandırılıyor\n", name)
-			return
-		case err := <-waitCh:
-			// Süreç sonlandı, önce kaynakları temizle
-			var exitCode int
-			if err != nil {
-				if exitErr, ok := err.(*exec.ExitError); ok {
-					if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
-						exitCode = status.ExitStatus()
-					}
-					fmt.Printf("%s sonlandı, çıkış kodu: %d\n", name, exitCode)
-				} else {
-					fmt.Printf("%s başarıyla tamamlandı (çıkış kodu 0)\n", name)
-				}
-
-				// Sürecin durumunu güncelle
-				p.state = "stopped"
-
-				// Süreç kaynaklarını temizle
-				// Not: p.cmd.Wait() zaten çağrıldığı için Process.Kill() gerekli değil,
-				// süreç zaten sonlanmış durumda
-
-				// AutoRestart politikasına göre karar ver
-				autoRestartConfig := p.config.AutoRestart
-
-				// Süreç listesinden kaldır
-				m.removeProcess(name, p)
-
-				// AutoRestart politikasını uygula
-				switch autoRestartConfig {
-				case "always":
-					fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
-					m.StartProgram(name)
-				case "never":
-					fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
-					// Süreç zaten sonlandığı için Kill() çağrısı gereksiz
-				case "unexpected":
-					isExpected := false
-					for _, code := range p.config.ExitCodes {
-						if code == exitCode {
-							isExpected = true
-							break
-						}
-					}
-
-					if !isExpected {
-						fmt.Printf("%s beklenmeyen çıkış kodu ile sonlandı (%d), yeniden başlatılıyor\n", name, exitCode)
-						m.StartProgram(name)
-					} else {
-						fmt.Printf("%s beklenen çıkış kodu ile sonlandı (%d), yeniden başlatılmayacak\n", name, exitCode)
-					}
-				}
-			}
-
-			switch p.config.AutoRestart {
-			case "always":
-				fmt.Printf("%s yeniden başlatılıyor (always politikası) pid %d\n", name, p.cmd.Process.Pid)
-				m.removeProcess(name, p) // Eski süreci temizle
-				m.StartProgram(name)
-			case "never":
-				fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
-				if p.cmd.Process != nil {
-					_ = p.cmd.Process.Kill() // Hata görmezden gelindi ama iyi bir pratikte işlenmelidir
-				}
-				m.removeProcess(name, p)
-			case "unexpected":
-
-				isExpected := false
-				for _, code := range p.config.ExitCodes {
-					if code == exitCode {
-						isExpected = true
-						break
-					}
-				}
-				if !isExpected {
-					fmt.Printf("%s beklenmedik çıkış (%d), yeniden başlatılıyor\n", name, exitCode)
-					m.removeProcess(name, p) // Eski süreci temizle
-					m.startProcess(name, p.config)
-				} else {
-					fmt.Printf("%s beklenen çıkış (%d), yeniden başlatılmadı\n", name, exitCode)
-					if p.cmd.Process != nil {
-						_ = p.cmd.Process.Kill()
-					}
-					m.removeProcess(name, p)
-				}
-			}
-		}
-	}(p, p.cancelCh)
+	go m.monitorProcess(name, p)
 
 	return p
+}
+
+func (m *Manager) monitorProcess(name string, p *Process) {
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- p.cmd.Wait()
+	}()
+
+	select {
+	case <-p.cancelCh:
+		fmt.Printf("%s için izleme goroutine'i konfigürasyon değişikliği nedeniyle sonlandırılıyor\n", name)
+		return
+	case err := <-waitCh:
+		var exitCode int
+		if err != nil {
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+					exitCode = status.ExitStatus()
+				}
+				fmt.Printf("%s sonlandı, çıkış kodu: %d\n", name, exitCode)
+			} else {
+				fmt.Printf("%s başarıyla tamamlandı (çıkış kodu 0)\n", name)
+			}
+		}
+
+		p.state = "stopped"
+		m.handleAutoRestart(name, p, exitCode)
+
+	}
+}
+
+func (m *Manager) handleAutoRestart(name string, p *Process, exitCode int) {
+	autoRestartConfig := p.config.AutoRestart
+
+	switch autoRestartConfig {
+	case "always":
+		fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
+		m.StartProgram(name)
+	case "never":
+		fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
+	case "unexpected":
+		isExpected := false
+		for _, code := range p.config.ExitCodes {
+			if code == exitCode {
+				isExpected = true
+				break
+			}
+		}
+
+		if !isExpected {
+			fmt.Printf("%s beklenmeyen çıkış kodu ile sonlandı (%d), yeniden başlatılıyor\n", name, exitCode)
+			m.StartProgram(name)
+		} else {
+			fmt.Printf("%s beklenen çıkış kodu ile sonlandı (%d), yeniden başlatılmayacak\n", name, exitCode)
+		}
+	}
+	m.removeProcessMap(name, p)
 }
 
 func (m *Manager) StopProgram(name string) {
@@ -282,6 +255,7 @@ func (m *Manager) StopProgram(name string) {
 	}
 }
 
+// program kapnma işlemi
 func (m *Manager) Stop() {
 	for _, procs := range m.processes {
 		for _, p := range procs {

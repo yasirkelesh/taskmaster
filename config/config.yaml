@@ -16,7 +16,7 @@ programs:
     workingdir: "/tmp"
     umask: 022
   test:
-    command: "echo 'Merhaba dunya' && sleep 20"
+    command: "echo 'Merhaba dunya' && sleep 10"
     numprocs: 10
     autostart: false
     autorestart: never
