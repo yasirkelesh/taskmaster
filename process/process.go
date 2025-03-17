@@ -24,6 +24,13 @@ type Manager struct {
 
 // removeProcess removes a specific process from the slice of processes for a given program name
 func (m *Manager) removeProcess(name string, proc *Process) {
+
+	if proc.cmd != nil && proc.cmd.Process != nil {
+		err := proc.cmd.Process.Kill()
+		if err != nil {
+			fmt.Printf("Süreç durdurulurken hata: %v\n", err)
+		}
+	}
 	procs := m.processes[name]
 	for i, p := range procs {
 		if p == proc {
@@ -69,12 +76,7 @@ func (m *Manager) RestartProgram(name string) {
             }
             
             // Süreci öldür
-            if p.cmd != nil && p.cmd.Process != nil {
-                err := p.cmd.Process.Kill()
-                if err != nil {
-                    fmt.Printf("Süreç durdurulurken hata: %v\n", err)
-                }
-            }
+            
             
             // Süreci süreç listesinden kaldır
             m.removeProcess(name, p)
