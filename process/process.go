@@ -40,8 +40,6 @@ func (m *Manager) removeProcess(name string, proc *Process) {
 
 	for i, p := range procs {
 		if p == proc {
-			m.mutex.Lock()
-			defer m.mutex.Unlock()
 			m.processes[name] = append(procs[:i], procs[i+1:]...)
 			p.cmd.Process.Kill()
 			break
@@ -111,8 +109,6 @@ func (m *Manager) Start() {
 		if prog.AutoStart {
 			for i := 0; i < prog.NumProcs; i++ {
 				p := m.startProcess(name, prog)
-				m.mutex.Lock()
-				defer m.mutex.Unlock()
 				m.processes[name] = append(m.processes[name], p)
 
 			}
@@ -127,6 +123,9 @@ func (m *Manager) StartProgram(name string) error {
 		return fmt.Errorf("program '%s' yapılandırmada tanımlı değil", name)
 	}
 	// Zaten çalışan süreç sayısını kontrol et
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	currentProcs := len(m.processes[name])
 
 	if currentProcs >= prog.NumProcs {
@@ -136,6 +135,7 @@ func (m *Manager) StartProgram(name string) error {
 	// Eksik süreçleri başlat
 	for i := currentProcs; i < prog.NumProcs; i++ {
 		p := m.startProcess(name, prog)
+
 		m.processes[name] = append(m.processes[name], p)
 
 	}

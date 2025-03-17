@@ -2,8 +2,8 @@ programs:
   nginx:
     command: "echo 'Nginx running' && sleep 10"
     numprocs: 10
-    autostart: false # Manuel başlatacağız
-    autorestart: always
+    autostart: true # Manuel başlatacağız
+    autorestart: never
     exitcodes: [0]
     startsecs: 5
     startretries: 3
@@ -19,7 +19,7 @@ programs:
     command: "echo 'Merhaba dunya' && sleep 20"
     numprocs: 10
     autostart: false
-    autorestart: always
+    autorestart: never
     exitcodes: [0]
     startsecs: 5
     startretries: 3
