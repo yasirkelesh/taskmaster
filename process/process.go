@@ -3,22 +3,24 @@ package process
 import (
 	"fmt"
 	"os/exec"
-	"syscall"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"taskmaster/config"
 )
 
 type Process struct {
-	id 	  	  int64
-	cmd       *exec.Cmd
-	config    config.Program
-	state     string // "running", "stopped", "failed"
-	cancelCh  chan struct{}
+	id       int64
+	cmd      *exec.Cmd
+	config   config.Program
+	state    string // "running", "stopped", "failed"
+	cancelCh chan struct{}
 }
 
 type Manager struct {
-	config    config.Config
-	processes map[string][]*Process
+	config           config.Config
+	processes        map[string][]*Process
+	mutex            sync.RWMutex
 	processIDCounter int64
 }
 
@@ -31,17 +33,21 @@ func (m *Manager) removeProcess(name string, proc *Process) {
 			fmt.Printf("Süreç durdurulurken hata: %v\n", err)
 		}
 	}
+
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 	procs := m.processes[name]
+
 	for i, p := range procs {
 		if p == proc {
+			m.mutex.Lock()
+			defer m.mutex.Unlock()
 			m.processes[name] = append(procs[:i], procs[i+1:]...)
 			p.cmd.Process.Kill()
 			break
 		}
 	}
 }
-
-
 
 func NewManager(cfg config.Config) *Manager {
 	return &Manager{
@@ -51,49 +57,53 @@ func NewManager(cfg config.Config) *Manager {
 }
 
 func (m *Manager) RestartProgram(name string) {
-    // Önce yapılandırmayı kontrol et
-    prog, exists := m.config.Programs[name]
-    if !exists {
-        fmt.Printf("'%s' adında bir program yok\n", name)
-        return
-    }
+	// Önce yapılandırmayı kontrol et
+	prog, exists := m.config.Programs[name]
+	if !exists {
+		fmt.Printf("'%s' adında bir program yok\n", name)
+		return
+	}
 
-    // Mevcut süreçlerin bir kopyasını al
-    var procs []*Process
-    if existingProcs, ok := m.processes[name]; ok {
-        procs = make([]*Process, len(existingProcs))
-        copy(procs, existingProcs)
-    }
+	// Mevcut süreçlerin bir kopyasını al
+	var procs []*Process
+	if existingProcs, ok := m.processes[name]; ok {
+		procs = make([]*Process, len(existingProcs))
+		copy(procs, existingProcs)
+	}
 
-    // Restart bayrağı ile özel bir stop işlemi yapalım
-    // Bu sayede auto-restart tetiklenmeyecek
-    for _, p := range procs {
-        if p != nil && p.state == "running" {
-            // Sürecin auto-restart işleminin atlamasını sağlayalım
-            if p.cancelCh != nil {
-                close(p.cancelCh)  // Mevcut izleme goroutine'ini kapat
-                p.cancelCh = nil   // Kapatıldığını işaretle
-            }
-            
-            // Süreci öldür
-            
-            
-            // Süreci süreç listesinden kaldır
-            m.removeProcess(name, p)
-        }
-    }
-    
-    // Tüm süreçleri temizle
-    m.processes[name] = nil
-    
-    // Şimdi yeni süreçleri başlat
-    m.processes[name] = make([]*Process, 0, prog.NumProcs)
-    for i := 0; i < prog.NumProcs; i++ {
-        p := m.startProcess(name, prog)
-        m.processes[name] = append(m.processes[name], p)
-    }
-    
-    fmt.Printf("'%s' programı yeniden başlatıldı\n", name)
+
+	// Restart bayrağı ile özel bir stop işlemi yapalım
+	// Bu sayede auto-restart tetiklenmeyecek
+	for _, p := range procs {
+		if p != nil && p.state == "running" {
+			// Sürecin auto-restart işleminin atlamasını sağlayalım
+			if p.cancelCh != nil {
+				close(p.cancelCh) // Mevcut izleme goroutine'ini kapat
+				p.cancelCh = nil  // Kapatıldığını işaretle
+			}
+
+			// Süreci öldür
+
+			// Süreci süreç listesinden kaldır
+			m.removeProcess(name, p)
+		}
+	}
+
+	// Tüm süreçleri temizle
+	m.processes[name] = nil
+
+
+	// Şimdi yeni süreçleri başlat
+	m.processes[name] = make([]*Process, 0, prog.NumProcs)
+
+
+	for i := 0; i < prog.NumProcs; i++ {
+		p := m.startProcess(name, prog)
+		m.processes[name] = append(m.processes[name], p)
+
+	}
+
+	fmt.Printf("'%s' programı yeniden başlatıldı\n", name)
 }
 
 func (m *Manager) Start() {
@@ -101,7 +111,10 @@ func (m *Manager) Start() {
 		if prog.AutoStart {
 			for i := 0; i < prog.NumProcs; i++ {
 				p := m.startProcess(name, prog)
+				m.mutex.Lock()
+				defer m.mutex.Unlock()
 				m.processes[name] = append(m.processes[name], p)
+
 			}
 		}
 	}
@@ -110,11 +123,12 @@ func (m *Manager) Start() {
 // Yeni ek: Belirli bir programı başlat
 func (m *Manager) StartProgram(name string) error {
 	prog, exists := m.config.Programs[name]
-	if (!exists) {
+	if !exists {
 		return fmt.Errorf("program '%s' yapılandırmada tanımlı değil", name)
 	}
 	// Zaten çalışan süreç sayısını kontrol et
 	currentProcs := len(m.processes[name])
+
 	if currentProcs >= prog.NumProcs {
 		return fmt.Errorf("'%s' zaten maksimum süreç sayısında çalışıyor", name)
 	}
@@ -123,19 +137,19 @@ func (m *Manager) StartProgram(name string) error {
 	for i := currentProcs; i < prog.NumProcs; i++ {
 		p := m.startProcess(name, prog)
 		m.processes[name] = append(m.processes[name], p)
+
 	}
 	return nil
 }
 
 func (m *Manager) startProcess(name string, prog config.Program) *Process {
 	newID := atomic.AddInt64(&m.processIDCounter, 1)
-	
-	
+
 	p := &Process{
-		id:      newID,
-		cmd:    exec.Command("sh", "-c", prog.Command),
-		config: prog,
-		state:  "stopped",
+		id:       newID,
+		cmd:      exec.Command("sh", "-c", prog.Command),
+		config:   prog,
+		state:    "stopped",
 		cancelCh: make(chan struct{}),
 	}
 	err := p.cmd.Start()
@@ -173,20 +187,20 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 				} else {
 					fmt.Printf("%s başarıyla tamamlandı (çıkış kodu 0)\n", name)
 				}
-				
+
 				// Sürecin durumunu güncelle
 				p.state = "stopped"
-				
+
 				// Süreç kaynaklarını temizle
 				// Not: p.cmd.Wait() zaten çağrıldığı için Process.Kill() gerekli değil,
 				// süreç zaten sonlanmış durumda
-				
+
 				// AutoRestart politikasına göre karar ver
 				autoRestartConfig := p.config.AutoRestart
-				
+
 				// Süreç listesinden kaldır
 				m.removeProcess(name, p)
-				
+
 				// AutoRestart politikasını uygula
 				switch autoRestartConfig {
 				case "always":
@@ -203,7 +217,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 							break
 						}
 					}
-					
+
 					if !isExpected {
 						fmt.Printf("%s beklenmeyen çıkış kodu ile sonlandı (%d), yeniden başlatılıyor\n", name, exitCode)
 						m.StartProgram(name)
@@ -217,7 +231,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 			case "always":
 				fmt.Printf("%s yeniden başlatılıyor (always politikası) pid %d\n", name, p.cmd.Process.Pid)
 				m.removeProcess(name, p) // Eski süreci temizle
-				m.StartProgram(name)			
+				m.StartProgram(name)
 			case "never":
 				fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
 				if p.cmd.Process != nil {
@@ -225,7 +239,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 				}
 				m.removeProcess(name, p)
 			case "unexpected":
-	
+
 				isExpected := false
 				for _, code := range p.config.ExitCodes {
 					if code == exitCode {
@@ -247,7 +261,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 			}
 		}
 	}(p, p.cancelCh)
-	
+
 	return p
 }
 
@@ -263,6 +277,7 @@ func (m *Manager) StopProgram(name string) {
 			p.cmd.Process.Kill()
 			p.state = "stopped"
 			m.processes[name] = nil
+
 		}
 	}
 }
@@ -277,7 +292,6 @@ func (m *Manager) Stop() {
 		}
 	}
 }
-
 
 func (m *Manager) UpdateConfig(newCfg config.Config) {
 	m.config = newCfg
@@ -295,45 +309,46 @@ func (m *Manager) GetStatus() map[string][]string {
 }
 
 func (m *Manager) StatusProgram(name string) {
-    procs, exists := m.processes[name]
-    if (!exists || len(procs) == 0) {
-        fmt.Printf("%s: Çalışan süreç yok\n", name)
-        return
-    }
-    
-    for i, p := range procs {
-        if p == nil {
-            continue
-        }
-        var pid int
-        if p.cmd != nil && p.cmd.Process != nil {
-            pid = p.cmd.Process.Pid
-        }
-        fmt.Printf("%s[%d] (ID:%d, PID:%d): %s\n", name, i, p.id, pid, p.state)
-    }
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+	procs, exists := m.processes[name]
+
+	if !exists || len(procs) == 0 {
+		fmt.Printf("%s: Çalışan süreç yok\n", name)
+		return
+	}
+
+	for i, p := range procs {
+		if p == nil {
+			continue
+		}
+		var pid int
+		if p.cmd != nil && p.cmd.Process != nil {
+			pid = p.cmd.Process.Pid
+		}
+		fmt.Printf("%s[%d] (ID:%d, PID:%d): %s\n", name, i, p.id, pid, p.state)
+	}
 }
 
 func (m *Manager) Status() {
-    fmt.Println("Program         Status             PID       ID")
-    fmt.Println("--------------------------------------------")
-    
-    for name, procs := range m.processes {
-        if len(procs) == 0 {
-            fmt.Printf("%-15s No processes\n", name)
-            continue
-        }
-        
-        for i, p := range procs {
-            if p == nil {
-                continue
-            }
-            var pid int
-            if p.cmd != nil && p.cmd.Process != nil {
-                pid = p.cmd.Process.Pid
-            }
-            fmt.Printf("%-15s[%d] %-10s     %-8d %-8d\n", name, i, p.state, pid, p.id)
-        }
-    }
+	fmt.Println("Program         Status             PID       ID")
+	fmt.Println("--------------------------------------------")
+
+	for name, procs := range m.processes {
+		if len(procs) == 0 {
+			fmt.Printf("%-15s No processes\n", name)
+			continue
+		}
+
+		for i, p := range procs {
+			if p == nil {
+				continue
+			}
+			var pid int
+			if p.cmd != nil && p.cmd.Process != nil {
+				pid = p.cmd.Process.Pid
+			}
+			fmt.Printf("%-15s[%d] %-10s     %-8d %-8d\n", name, i, p.state, pid, p.id)
+		}
+	}
 }
-
-
