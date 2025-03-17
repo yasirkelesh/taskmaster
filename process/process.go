@@ -162,14 +162,53 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 			fmt.Printf("%s için izleme goroutine'i konfigürasyon değişikliği nedeniyle sonlandırılıyor\n", name)
 			return
 		case err := <-waitCh:
-			// Süreç sonlandı, normal işlemlere devam et
-			p.state = "stopped"
-			
+			// Süreç sonlandı, önce kaynakları temizle
 			var exitCode int
 			if err != nil {
 				if exitErr, ok := err.(*exec.ExitError); ok {
 					if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 						exitCode = status.ExitStatus()
+					}
+					fmt.Printf("%s sonlandı, çıkış kodu: %d\n", name, exitCode)
+				} else {
+					fmt.Printf("%s başarıyla tamamlandı (çıkış kodu 0)\n", name)
+				}
+				
+				// Sürecin durumunu güncelle
+				p.state = "stopped"
+				
+				// Süreç kaynaklarını temizle
+				// Not: p.cmd.Wait() zaten çağrıldığı için Process.Kill() gerekli değil,
+				// süreç zaten sonlanmış durumda
+				
+				// AutoRestart politikasına göre karar ver
+				autoRestartConfig := p.config.AutoRestart
+				
+				// Süreç listesinden kaldır
+				m.removeProcess(name, p)
+				
+				// AutoRestart politikasını uygula
+				switch autoRestartConfig {
+				case "always":
+					fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
+					m.StartProgram(name)
+				case "never":
+					fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
+					// Süreç zaten sonlandığı için Kill() çağrısı gereksiz
+				case "unexpected":
+					isExpected := false
+					for _, code := range p.config.ExitCodes {
+						if code == exitCode {
+							isExpected = true
+							break
+						}
+					}
+					
+					if !isExpected {
+						fmt.Printf("%s beklenmeyen çıkış kodu ile sonlandı (%d), yeniden başlatılıyor\n", name, exitCode)
+						m.StartProgram(name)
+					} else {
+						fmt.Printf("%s beklenen çıkış kodu ile sonlandı (%d), yeniden başlatılmayacak\n", name, exitCode)
 					}
 				}
 			}
@@ -186,6 +225,7 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 				}
 				m.removeProcess(name, p)
 			case "unexpected":
+	
 				isExpected := false
 				for _, code := range p.config.ExitCodes {
 					if code == exitCode {
