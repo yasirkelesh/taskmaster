@@ -19,7 +19,7 @@ programs:
     command: "echo 'Merhaba dunya' && sleep 10"
     numprocs: 10
     autostart: false
-    autorestart: never
+    autorestart: always
     exitcodes: [0]
     startsecs: 5
     startretries: 3
