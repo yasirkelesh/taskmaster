@@ -7,6 +7,7 @@ import (
 )
 
 // Config, yapılandırma dosyasındaki tüm ayarları tutar
+
 type Config struct {
 	Programs map[string]Program `yaml:"programs"`
 }
