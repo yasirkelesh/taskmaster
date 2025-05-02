@@ -25,3 +25,14 @@ programs:
     startretries: 3
     stopsignal: TERM
     stoptime: 10
+
+  test2:
+    command: "echo 'Merhaba dunya' && sleep 10"
+    numprocs: 10
+    autostart: true
+    autorestart: always
+    exitcodes: [0]
+    startsecs: 5
+    startretries: 3
+    stopsignal: TERM
+    stoptime: 10
