@@ -9,13 +9,20 @@ import (
 	"taskmaster/process"
 )
 
-func Run(manager *process.Manager, sigChan chan os.Signal) {
+func Run(manager *process.Manager, sigChan chan os.Signal, inputmcp chan string) {
 	reader := bufio.NewReader(os.Stdin)
+	var input string
 	for {
+		
 		fmt.Print("taskmaster> ")
-		input, _ := reader.ReadString('\n')
+	
+		
+		input, _ = reader.ReadString('\n')
+		
+		if len(inputmcp) >  0 {
+			input = <-inputmcp
+		}
 		input = strings.TrimSpace(input)
-		// Komutları parçalara ayır
 		parts := strings.Fields(input)
 		command := ""
 		if len(parts) > 0 {
