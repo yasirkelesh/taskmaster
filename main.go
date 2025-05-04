@@ -59,7 +59,7 @@ func main() {
 	}()
 
 	// Kontrol kabuğunu başlat
-	shell.Run(manager, sigChan, mcpinputchan)
+	shell.Run(manager, sigChan)
 
 	// Programın kapanmasını bekle
 	manager.Stop()

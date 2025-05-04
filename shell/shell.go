@@ -9,7 +9,7 @@ import (
 	"taskmaster/process"
 )
 
-func Run(manager *process.Manager, sigChan chan os.Signal, inputmcp chan string) {
+func Run(manager *process.Manager, sigChan chan os.Signal) {
 	reader := bufio.NewReader(os.Stdin)
 	var input string
 	for {
@@ -19,9 +19,7 @@ func Run(manager *process.Manager, sigChan chan os.Signal, inputmcp chan string)
 		
 		input, _ = reader.ReadString('\n')
 		
-		if len(inputmcp) >  0 {
-			input = <-inputmcp
-		}
+		
 		input = strings.TrimSpace(input)
 		parts := strings.Fields(input)
 		command := ""
