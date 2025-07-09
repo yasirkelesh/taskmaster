@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 	"taskmaster/config"
-	"taskmaster/mcpserver"
+
 	"taskmaster/process"
 	"taskmaster/shell"
 
@@ -17,20 +17,10 @@ func main() {
 	// Yapılandırmayı yükle
 
 	r := gin.Default()
-	apiKey := "taskmaster-secret-key"
-	r.Use(mcpserver.AuthMiddleware(apiKey))
 
-	// GET /jobs uç noktası
 
-	mcpinputchan := make(chan string)
-	r.GET("/jobs", func(c *gin.Context) {
-		jobs, err := mcpserver.GetJobStatus(mcpinputchan)
-		if err != nil {
-			c.JSON(500, gin.H{"status": "error", "message": err.Error()})
-			return
-		}
-		c.JSON(200, gin.H{"status": "success", "data": jobs})
-	})
+
+
 
 	// Sunucuyu başlat
 	go r.Run(":8080")
