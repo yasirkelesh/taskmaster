@@ -16,3 +16,20 @@ programs:
     workingdir: "/tmp"
     umask: 022
 
+  test:
+    command: "mkdiqerw test && echorqwe 'Test running' && sleep 5" 
+    numprocs: 2
+    autostart: true
+    autorestart: never
+    exitcodes: [0,1,2,126,127,128,130,255]
+    startsecs: 10
+    startretries: 5
+    stopsignal: TERM
+    stoptime: 10
+    stdout: "/tmp/test.stdout"
+    stderr: "/tmp/test.stderr"
+    env:
+      STARTED_BY: "taskmaster"
+      TEST_MODE: "true"
+    workingdir: "/Users/mukeles/Desktop/taskmaster"
+    umask: 022

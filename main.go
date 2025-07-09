@@ -18,10 +18,6 @@ func main() {
 
 	r := gin.Default()
 
-
-
-
-
 	// Sunucuyu başlat
 	go r.Run(":8080")
 
@@ -41,6 +37,7 @@ func main() {
 		signal.Notify(sigChan, syscall.SIGHUP)
 		for range sigChan {
 			fmt.Println("SIGHUP alındı, yapılandırma yenileniyor...")
+			fmt.Print("taskmaster> ")
 			newCfg, err := config.LoadConfig("config/config.yaml")
 			if err == nil {
 				manager.UpdateConfig(newCfg)

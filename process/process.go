@@ -31,6 +31,7 @@ func (m *Manager) removeProcess(name string, proc *Process) {
 		err := proc.cmd.Process.Kill()
 		if err != nil {
 			fmt.Printf("Süreç durdurulurken hata: %v\n", err)
+			fmt.Print("taskmaster> ")
 		}
 	}
 
@@ -72,6 +73,7 @@ func (m *Manager) RestartProgram(name string) {
 	prog, exists := m.config.Programs[name]
 	if !exists {
 		fmt.Printf("'%s' adında bir program yok\n", name)
+		fmt.Print("taskmaster> ")
 		return
 	}
 
@@ -115,6 +117,7 @@ func (m *Manager) RestartProgram(name string) {
 	}
 
 	fmt.Printf("'%s' programı yeniden başlatıldı\n", name)
+	fmt.Print("taskmaster> ")
 }
 
 func (m *Manager) Start() {
@@ -168,12 +171,14 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 	err := p.cmd.Start()
 	if err != nil {
 		fmt.Printf("Süreç başlatılamadı (%s ID:%d): %v\n", name, p.id, err)
+		fmt.Print("taskmaster> ")
 		p.state = "failed"
 		return p
 	}
 	p.state = "running"
 
 	fmt.Printf("Süreç başlatıldı: %s [ID:%d] (PID:%d)\n", name, p.id, p.cmd.Process.Pid)
+	fmt.Print("taskmaster> ")
 
 	// Sürecin durumunu izle ve autorestart uygula
 	go m.monitorProcess(name, p)
@@ -190,6 +195,7 @@ func (m *Manager) monitorProcess(name string, p *Process) {
 	select {
 	case <-p.cancelCh:
 		fmt.Printf("%s için izleme goroutine'i konfigürasyon değişikliği nedeniyle sonlandırılıyor\n", name)
+		fmt.Print("taskmaster> ")
 		return
 	case err := <-waitCh:
 		var exitCode int
@@ -199,8 +205,10 @@ func (m *Manager) monitorProcess(name string, p *Process) {
 					exitCode = status.ExitStatus()
 				}
 				fmt.Printf("%s sonlandı, çıkış kodu: %d\n", name, exitCode)
+				fmt.Print("taskmaster> ")
 			} else {
 				fmt.Printf("%s başarıyla tamamlandı (çıkış kodu 0)\n", name)
+				fmt.Print("taskmaster> ")
 			}
 		}
 
@@ -216,9 +224,11 @@ func (m *Manager) handleAutoRestart(name string, p *Process, exitCode int) {
 	switch autoRestartConfig {
 	case "always":
 		fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
+		fmt.Print("taskmaster> ")
 		m.StartProgram(name)
 	case "never":
 		fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
+		fmt.Print("taskmaster> ")
 	case "unexpected":
 		isExpected := false
 		for _, code := range p.config.ExitCodes {
@@ -230,9 +240,11 @@ func (m *Manager) handleAutoRestart(name string, p *Process, exitCode int) {
 
 		if !isExpected {
 			fmt.Printf("%s beklenmeyen çıkış kodu ile sonlandı (%d), yeniden başlatılıyor\n", name, exitCode)
+			fmt.Print("taskmaster> ")
 			m.StartProgram(name)
 		} else {
 			fmt.Printf("%s beklenen çıkış kodu ile sonlandı (%d), yeniden başlatılmayacak\n", name, exitCode)
+			fmt.Print("taskmaster> ")
 		}
 	}
 	m.removeProcessMap(name, p)
@@ -242,6 +254,7 @@ func (m *Manager) StopProgram(name string) {
 	procs, exists := m.processes[name]
 	if !exists {
 		fmt.Printf("'%s' adında bir program yok\n", name)
+		fmt.Print("taskmaster> ")
 		return
 	}
 
@@ -289,6 +302,7 @@ func (m *Manager) StatusProgram(name string) {
 
 	if !exists || len(procs) == 0 {
 		fmt.Printf("%s: Çalışan süreç yok\n", name)
+		fmt.Print("taskmaster> ")
 		return
 	}
 
@@ -302,6 +316,7 @@ func (m *Manager) StatusProgram(name string) {
 		}
 		fmt.Printf("%s[%d] (ID:%d, PID:%d): %s\n", name, i, p.id, pid, p.state)
 	}
+	fmt.Print("taskmaster> ")
 }
 
 func (m *Manager) Status() {
@@ -311,6 +326,7 @@ func (m *Manager) Status() {
 	for name, procs := range m.processes {
 		if len(procs) == 0 {
 			fmt.Printf("%-15s No processes\n", name)
+			fmt.Print("taskmaster> ")
 			continue
 		}
 
@@ -324,5 +340,6 @@ func (m *Manager) Status() {
 			}
 			fmt.Printf("%-15s[%d] %-10s     %-8d %-8d\n", name, i, p.state, pid, p.id)
 		}
+		fmt.Print("taskmaster> ")
 	}
 }
