@@ -72,7 +72,7 @@ programs:
 
 ### Yapılandırma Parametreleri
 
-|Durum|| Parametre | Açıklama |
+|Durum| Parametre | Açıklama |
 |--|-----------|----------|
 |[x]| `command` | Programı başlatmak için kullanılacak komut |
 |[x]| `numprocs` | Başlatılacak ve çalışır durumda tutulacak işlem sayısı |
