@@ -72,22 +72,22 @@ programs:
 
 ### Yapılandırma Parametreleri
 
-| Parametre | Açıklama |
-|-----------|----------|
-| `command` | Programı başlatmak için kullanılacak komut |
-| `numprocs` | Başlatılacak ve çalışır durumda tutulacak işlem sayısı |
-| `autostart` | Programın başlangıçta otomatik başlatılıp başlatılmayacağı |
-| `autorestart` | Yeniden başlatma stratejisi (always/never/unexpected) |
-| `exitcodes` | Beklenen çıkış kodları |
-| `startsecs` | Başarılı başlatma için minimum çalışma süresi |
-| `startretries` | Yeniden başlatma deneme sayısı |
-| `stopsignal` | Durdurmak için kullanılacak sinyal |
-| `stopwaitsecs` | Zararsız durdurmadan sonra bekleme süresi |
-| `stdout_logfile` | Standart çıktı log dosyası |
-| `stderr_logfile` | Hata çıktı log dosyası |
-| `environment` | Ortam değişkenleri |
-| `directory` | Çalışma dizini |
-| `umask` | Dosya oluşturma izinleri |
+|Durum|| Parametre | Açıklama |
+|--|-----------|----------|
+|[x]| `command` | Programı başlatmak için kullanılacak komut |
+|[x]| `numprocs` | Başlatılacak ve çalışır durumda tutulacak işlem sayısı |
+|[x]| `autostart` | Programın başlangıçta otomatik başlatılıp başlatılmayacağı |
+|[x]| `autorestart` | Yeniden başlatma stratejisi (always/never/unexpected) |
+|[x]| `exitcodes` | Beklenen çıkış kodları |
+|[x]| `startsecs` | Başarılı başlatma için minimum çalışma süresi |
+|[x]| `startretries` | Yeniden başlatma deneme sayısı |
+|[x]| `stopsignal` | Durdurmak için kullanılacak sinyal |
+|[x]| `stopwaitsecs` | Zararsız durdurmadan sonra bekleme süresi |
+|[x]| `stdout_logfile` | Standart çıktı log dosyası |
+|[x]| `stderr_logfile` | Hata çıktı log dosyası |
+|[x]| `environment` | Ortam değişkenleri |
+|[x]| `directory` | Çalışma dizini |
+|[x]| `umask` | Dosya oluşturma izinleri |
 
 ## 🚀 Kullanım
 
@@ -129,14 +129,14 @@ Shutting down taskmaster...
 - `stop <program>` - Programı durdurur
 - `restart <program>` - Programı yeniden başlatır
 - `reload` - Yapılandırma dosyasını yeniden yükler
-- `quit` - Taskmaster'ı sonlandırır
+- `exit` - Taskmaster'ı sonlandırır
 
 ## 🔧 Kurulum
 
 ### Sistem Gereksinimleri
 
 - Unix/Linux işletim sistemi
-- Python 3.8+ (örnek uygulama için)
+- Go
 - YAML yapılandırma dosyası
 
 ### Kurulum Adımları
@@ -147,10 +147,6 @@ Shutting down taskmaster...
    cd taskmaster
    ```
 
-2. Bağımlılıkları yükleyin:
-   ```bash
-   pip install -r requirements.txt
-   ```
 
 3. Yapılandırma dosyasını hazırlayın:
    ```bash
@@ -160,7 +156,7 @@ Shutting down taskmaster...
 
 4. Taskmaster'ı başlatın:
    ```bash
-   ./taskmaster config.yaml
+   go run main.go config.yaml
    ```
 
 ## 🔒 Güvenlik
