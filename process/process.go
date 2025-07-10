@@ -1,12 +1,17 @@
 package process
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"taskmaster/config"
+	"taskmaster/logger"
+	"time"
 )
 
 type Process struct {
@@ -49,7 +54,7 @@ func (m *Manager) removeProcess(name string, proc *Process) {
 }
 
 func (m *Manager) removeProcessMap(name string, proc *Process) {
-	
+
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 	procs := m.processes[name]
@@ -84,7 +89,6 @@ func (m *Manager) RestartProgram(name string) {
 		copy(procs, existingProcs)
 	}
 
-
 	// Restart bayrağı ile özel bir stop işlemi yapalım
 	// Bu sayede auto-restart tetiklenmeyecek
 	for _, p := range procs {
@@ -105,10 +109,8 @@ func (m *Manager) RestartProgram(name string) {
 	// Tüm süreçleri temizle
 	m.processes[name] = nil
 
-
 	// Şimdi yeni süreçleri başlat
 	m.processes[name] = make([]*Process, 0, prog.NumProcs)
-
 
 	for i := 0; i < prog.NumProcs; i++ {
 		p := m.startProcess(name, prog)
@@ -168,10 +170,41 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 		state:    "stopped",
 		cancelCh: make(chan struct{}),
 	}
+
+	// Stdout ve Stderr pipe'ları oluştur
+	if prog.Stdout != "" {
+		stdoutPipe, err := p.cmd.StdoutPipe()
+		if err == nil {
+			go m.logPipeOutput(stdoutPipe, prog.Stdout, name, "STDOUT")
+		}
+	}
+
+	if prog.Stderr != "" {
+		stderrPipe, err := p.cmd.StderrPipe()
+		if err == nil {
+			go m.logPipeOutput(stderrPipe, prog.Stderr, name, "STDERR")
+		}
+	}
+
+	// Working directory ayarla
+	if prog.WorkingDir != "" {
+		p.cmd.Dir = prog.WorkingDir
+	}
+
+	// Environment variables ayarla
+	if len(prog.Env) > 0 {
+		env := os.Environ()
+		for key, value := range prog.Env {
+			env = append(env, fmt.Sprintf("%s=%s", key, value))
+		}
+		p.cmd.Env = env
+	}
+
 	err := p.cmd.Start()
 	if err != nil {
 		fmt.Printf("Süreç başlatılamadı (%s ID:%d): %v\n", name, p.id, err)
 		fmt.Print("taskmaster> ")
+		logger.LogError(prog.Stderr, fmt.Sprintf("Süreç başlatılamadı (%s ID:%d): %v", name, p.id, err))
 		p.state = "failed"
 		return p
 	}
@@ -179,11 +212,31 @@ func (m *Manager) startProcess(name string, prog config.Program) *Process {
 
 	fmt.Printf("Süreç başlatıldı: %s [ID:%d] (PID:%d)\n", name, p.id, p.cmd.Process.Pid)
 	fmt.Print("taskmaster> ")
+	logger.LogInfo(prog.Stdout, fmt.Sprintf("Süreç başlatıldı: %s [ID:%d] (PID:%d)", name, p.id, p.cmd.Process.Pid))
 
-	// Sürecin durumunu izle ve autorestart uygula
 	go m.monitorProcess(name, p)
-
 	return p
+}
+
+// Yeni fonksiyon: Pipe çıktısını logla
+func (m *Manager) logPipeOutput(pipe io.ReadCloser, logFile, programName, outputType string) {
+	defer pipe.Close()
+
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" {
+			timestamp := time.Now().Format("2006/01/02 15:04:05")
+			logMessage := fmt.Sprintf("%s [%s-%s] %s\n", timestamp, programName, outputType, line)
+
+			// Dosyaya yaz
+			file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			if err == nil {
+				file.WriteString(logMessage)
+				file.Close()
+			}
+		}
+	}
 }
 
 func (m *Manager) monitorProcess(name string, p *Process) {
@@ -196,6 +249,7 @@ func (m *Manager) monitorProcess(name string, p *Process) {
 	case <-p.cancelCh:
 		fmt.Printf("%s için izleme goroutine'i konfigürasyon değişikliği nedeniyle sonlandırılıyor\n", name)
 		fmt.Print("taskmaster> ")
+		logger.LogInfo(p.config.Stdout, fmt.Sprintf("%s için izleme goroutine'i sonlandırıldı", name))
 		return
 	case err := <-waitCh:
 		var exitCode int
@@ -206,16 +260,45 @@ func (m *Manager) monitorProcess(name string, p *Process) {
 				}
 				fmt.Printf("%s sonlandı, çıkış kodu: %d\n", name, exitCode)
 				fmt.Print("taskmaster> ")
+
+				// Çıkış koduna göre log seviyesi belirle
+				if isErrorExitCode(exitCode) {
+					logger.LogError(p.config.Stderr, fmt.Sprintf("%s hata ile sonlandı, çıkış kodu: %d", name, exitCode))
+				} else {
+					logger.LogInfo(p.config.Stdout, fmt.Sprintf("%s sonlandı, çıkış kodu: %d", name, exitCode))
+				}
 			} else {
 				fmt.Printf("%s başarıyla tamamlandı (çıkış kodu 0)\n", name)
 				fmt.Print("taskmaster> ")
+				logger.LogInfo(p.config.Stdout, fmt.Sprintf("%s başarıyla tamamlandı (çıkış kodu 0)", name))
 			}
 		}
 
 		p.state = "stopped"
 		m.handleAutoRestart(name, p, exitCode)
-
 	}
+}
+
+// Hata çıkış kodlarını belirleyen yardımcı fonksiyon
+func isErrorExitCode(exitCode int) bool {
+	errorCodes := []int{
+		126, // Command found but not executable
+		127, // Command not found
+		128, // Invalid argument to exit
+		130, // Process terminated by Ctrl+C
+		143, // Process terminated by SIGTERM
+		255, // Exit status out of range
+	}
+
+	for _, code := range errorCodes {
+		if exitCode == code {
+			return true
+		}
+	}
+
+	// 1-125 arası kodlar genellikle program spesifik hatalar
+	// 0 = başarılı, 1-125 = program hatası, 126+ = sistem hatası
+	return exitCode > 0 && exitCode != 2 // 2 genellikle "usage error" ama kritik değil
 }
 
 func (m *Manager) handleAutoRestart(name string, p *Process, exitCode int) {
@@ -225,10 +308,18 @@ func (m *Manager) handleAutoRestart(name string, p *Process, exitCode int) {
 	case "always":
 		fmt.Printf("%s yeniden başlatılıyor (always politikası)\n", name)
 		fmt.Print("taskmaster> ")
+		logger.LogInfo(p.config.Stdout, fmt.Sprintf("%s yeniden başlatılıyor (always politikası)", name))
 		m.StartProgram(name)
 	case "never":
 		fmt.Printf("%s bitti, yeniden başlatılmayacak (never politikası)\n", name)
 		fmt.Print("taskmaster> ")
+
+		// Çıkış koduna göre log seviyesi belirle
+		if isErrorExitCode(exitCode) {
+			logger.LogError(p.config.Stderr, fmt.Sprintf("%s hata ile bitti, yeniden başlatılmayacak (never politikası), çıkış kodu: %d", name, exitCode))
+		} else {
+			logger.LogInfo(p.config.Stdout, fmt.Sprintf("%s normal şekilde bitti, yeniden başlatılmayacak (never politikası)", name))
+		}
 	case "unexpected":
 		isExpected := false
 		for _, code := range p.config.ExitCodes {
@@ -241,10 +332,12 @@ func (m *Manager) handleAutoRestart(name string, p *Process, exitCode int) {
 		if !isExpected {
 			fmt.Printf("%s beklenmeyen çıkış kodu ile sonlandı (%d), yeniden başlatılıyor\n", name, exitCode)
 			fmt.Print("taskmaster> ")
+			logger.LogWarning(p.config.Stderr, fmt.Sprintf("%s beklenmeyen çıkış kodu ile sonlandı (%d), yeniden başlatılıyor", name, exitCode))
 			m.StartProgram(name)
 		} else {
 			fmt.Printf("%s beklenen çıkış kodu ile sonlandı (%d), yeniden başlatılmayacak\n", name, exitCode)
 			fmt.Print("taskmaster> ")
+			logger.LogInfo(p.config.Stdout, fmt.Sprintf("%s beklenen çıkış kodu ile sonlandı (%d), yeniden başlatılmayacak", name, exitCode))
 		}
 	}
 	m.removeProcessMap(name, p)

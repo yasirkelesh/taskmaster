@@ -11,21 +11,36 @@ import (
 
 func Run(manager *process.Manager, sigChan chan os.Signal) {
 	reader := bufio.NewReader(os.Stdin)
-	var input string
 	for {
-		
 		fmt.Print("taskmaster> ")
-	
-		
-		input, _ = reader.ReadString('\n')
-		
-		
-		input = strings.TrimSpace(input)
-		parts := strings.Fields(input)
-		command := ""
-		if len(parts) > 0 {
-			command = parts[0]
+		var input []rune
+		for {
+			r, _, err := reader.ReadRune()
+			if err != nil {
+				fmt.Println()
+				return
+			}
+			if r == '\n' || r == '\r' {
+				fmt.Println()
+				break
+			}
+			if r == 127 || r == 8 { // Backspace veya DEL
+				if len(input) > 0 {
+					input = input[:len(input)-1]
+					fmt.Print("\b \b")
+				}
+			} else if r >= 32 && r <= 126 { // Yazdırılabilir karakterler
+				input = append(input, r)
+				fmt.Print(string(r))
+			}
+			// Ok tuşları ve diğer özel tuşlar desteklenmez
 		}
+		line := strings.TrimSpace(string(input))
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		command := parts[0]
 		switch command {
 		case "status":
 			status := manager.GetStatus()
@@ -74,7 +89,7 @@ func Run(manager *process.Manager, sigChan chan os.Signal) {
 		case "exit":
 			return
 		default:
-			fmt.Println("Bilinmeyen komut:", input)
+			fmt.Println("Bilinmeyen komut:", line)
 		}
 	}
 }

@@ -10,16 +10,10 @@ import (
 	"taskmaster/process"
 	"taskmaster/shell"
 
-	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	// Yapılandırmayı yükle
-
-	r := gin.Default()
-
-	// Sunucuyu başlat
-	go r.Run(":8080")
 
 	cfg, err := config.LoadConfig("config/config.yaml")
 	if err != nil {
@@ -34,12 +28,12 @@ func main() {
 	// SIGHUP sinyalini dinle (yapılandırma yenileme)
 	sigChan := make(chan os.Signal, 1)
 	go func() {
-		signal.Notify(sigChan, syscall.SIGHUP)
+		signal.Notify(sigChan, syscall.SIGHUP)//SIGHUP sinyali alındığında yapılandırma yenileniyor...
 		for range sigChan {
 			fmt.Println("SIGHUP alındı, yapılandırma yenileniyor...")
 			fmt.Print("taskmaster> ")
 			newCfg, err := config.LoadConfig("config/config.yaml")
-			if err == nil {
+			if err == nil { 
 				manager.UpdateConfig(newCfg)
 			}
 		}

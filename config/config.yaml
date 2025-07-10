@@ -9,11 +9,11 @@ programs:
     startretries: 3
     stopsignal: TERM
     stoptime: 10
-    stdout: "/tmp/nginx.stdout"
-    stderr: "/tmp/nginx.stderr"
+    stdout: "logs/nginx.stdout"
+    stderr: "logs/nginx.stderr"
     env:
       STARTED_BY: "taskmaster"
-    workingdir: "/tmp"
+    workingdir: "/Users/mukeles/Desktop/taskmaster"
     umask: 022
 
   test:
@@ -26,8 +26,8 @@ programs:
     startretries: 5
     stopsignal: TERM
     stoptime: 10
-    stdout: "/tmp/test.stdout"
-    stderr: "/tmp/test.stderr"
+    stdout: "logs/test.stdout"
+    stderr: "logs/test.stderr"
     env:
       STARTED_BY: "taskmaster"
       TEST_MODE: "true"
